@@ -225,7 +225,7 @@ def train(args, dataset, generator, discriminator):
 
             utils.save_image(
                 torch.cat(images, 0),
-                f'sample/{str(i + 1).zfill(6)}.png',
+                args.save_path + f'sample/{str(i + 1).zfill(6)}.png',
                 nrow=gen_i,
                 normalize=True,
                 range=(-1, 1),
@@ -233,7 +233,7 @@ def train(args, dataset, generator, discriminator):
 
         if (i + 1) % 10000 == 0:
             torch.save(
-                g_running.state_dict(), f'checkpoint/{str(i + 1).zfill(6)}.model'
+                g_running.state_dict(), args.save_path + f'checkpoint/{str(i + 1).zfill(6)}.model'
             )
 
         state_msg = (
@@ -250,29 +250,15 @@ if __name__ == '__main__':
     n_critic = 1
 
     parser = argparse.ArgumentParser(description='Progressive Growing of GANs')
-
     parser.add_argument('path', type=str, help='path of specified dataset')
-    parser.add_argument(
-        '--phase',
-        type=int,
-        default=600_000,
-        help='number of samples used for each training phases',
-    )
+    parser.add_argument('--phase', type=int, default=600_000, help='number of samples used for each training phases')
     parser.add_argument('--lr', default=0.001, type=float, help='learning rate')
     parser.add_argument('--sched', action='store_true', help='use lr scheduling')
     parser.add_argument('--init_size', default=8, type=int, help='initial image size')
     parser.add_argument('--max_size', default=1024, type=int, help='max image size')
-    parser.add_argument(
-        '--mixing', action='store_true', help='use mixing regularization'
-    )
-    parser.add_argument(
-        '--loss',
-        type=str,
-        default='wgan-gp',
-        choices=['wgan-gp', 'r1'],
-        help='class of gan loss',
-    )
-
+    parser.add_argument('--mixing', action='store_true', help='use mixing regularization')
+    parser.add_argument('--loss', type=str, default='wgan-gp', choices=['wgan-gp', 'r1'], help='class of gan loss')
+    parser.add_argument('--save_path', type=str, default='', help='path to saving dir.')
     args = parser.parse_args()
 
     generator = nn.DataParallel(StyledGenerator(code_size)).cuda()
