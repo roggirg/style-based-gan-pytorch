@@ -66,6 +66,6 @@ if __name__ == '__main__':
 
     imgset = datasets.ImageFolder(args.path)
 
-    with lmdb.open(args.out, map_size=1024 ** 4, readahead=False) as env:
+    with lmdb.open(args.out, map_size=1024 ** 4, readahead=False, writemap=True) as env:
         with env.begin(write=True) as txn:
             prepare(txn, imgset, args.n_worker)

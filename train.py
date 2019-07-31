@@ -239,6 +239,14 @@ def train(args, dataset, generator, discriminator, step=None):
 
             utils.save_image(
                 torch.cat(images, 0),
+                args.save_path + f'sample/{str(i + 1).zfill(6)}.jpg',
+                nrow=gen_i,
+                normalize=True,
+                range=(-1, 1),
+            )
+
+            utils.save_image(
+                torch.cat(images, 0),
                 args.save_path + f'sample/{str(i + 1).zfill(6)}.png',
                 nrow=gen_i,
                 normalize=True,
