@@ -1,6 +1,8 @@
 import argparse
 import random
 import math
+import os, re
+from collections import OrderedDict
 
 from tqdm import tqdm
 import numpy as np
@@ -20,6 +22,16 @@ from model import StyledGenerator, Discriminator
 def requires_grad(model, flag=True):
     for p in model.parameters():
         p.requires_grad = flag
+
+def dataPar_state_dict(state_dict):
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        if 'module' not in k:
+            k = 'module.' + k
+        else:
+            k = k.replace('features.module.', 'module.features.')
+        new_state_dict[k] = v
+    return new_state_dict
 
 
 def accumulate(model1, model2, decay=0.999):
@@ -43,8 +55,10 @@ def adjust_lr(optimizer, lr):
         group['lr'] = lr * mult
 
 
-def train(args, dataset, generator, discriminator):
-    step = int(math.log2(args.init_size)) - 2
+def train(args, dataset, generator, discriminator, step=None):
+    if step is None:
+        step = int(math.log2(args.init_size)) - 2
+
     resolution = 4 * 2 ** step
     loader = sample_data(
         dataset, args.batch.get(resolution, args.batch_default), resolution
@@ -248,6 +262,7 @@ if __name__ == '__main__':
     code_size = 512
     batch_size = 16
     n_critic = 1
+    step = None
 
     parser = argparse.ArgumentParser(description='Progressive Growing of GANs')
     parser.add_argument('path', type=str, help='path of specified dataset')
@@ -259,6 +274,7 @@ if __name__ == '__main__':
     parser.add_argument('--mixing', action='store_true', help='use mixing regularization')
     parser.add_argument('--loss', type=str, default='wgan-gp', choices=['wgan-gp', 'r1'], help='class of gan loss')
     parser.add_argument('--save_path', type=str, default='', help='path to saving dir.')
+    parser.add_argument('--ckpt_path', type=str, default=None, help='path to pretrained model file.')
     args = parser.parse_args()
 
     generator = nn.DataParallel(StyledGenerator(code_size)).cuda()
@@ -279,6 +295,19 @@ if __name__ == '__main__':
         }
     )
     d_optimizer = optim.Adam(discriminator.parameters(), lr=args.lr, betas=(0.0, 0.99))
+
+    if args.ckpt_path is not None:
+        basename = os.path.basename(args.ckpt_path)
+        regex = re.compile(r'\d+')
+        numbers = [int(x) for x in regex.findall(basename)]
+        step = numbers[-1]
+
+        state_dict = torch.load(args.ckpt_path)
+        generator.load_state_dict(dataPar_state_dict(state_dict['generator']))
+        discriminator.load_state_dict(dataPar_state_dict(state_dict['discriminator']))
+        g_optimizer.load_state_dict(state_dict['g_optimizer'])
+        d_optimizer.load_state_dict(state_dict['d_optimizer'])
+        g_running.load_state_dict(state_dict['g_running'])
 
     accumulate(g_running, generator.module, 0)
 
@@ -304,4 +333,4 @@ if __name__ == '__main__':
 
     args.batch_default = 32
 
-    train(args, dataset, generator, discriminator)
+    train(args, dataset, generator, discriminator, step)

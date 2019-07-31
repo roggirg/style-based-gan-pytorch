@@ -505,6 +505,61 @@ class StyledGenerator(nn.Module):
 
         return style
 
+class StyledGeneratorWithEncoder(nn.Module):
+    def __init__(self, code_dim=512, n_mlp=8):
+        super().__init__()
+
+        self.generator = Generator(code_dim)
+
+        layers = [PixelNorm()]
+        for i in range(n_mlp):
+            layers.append(EqualLinear(code_dim, code_dim))
+            layers.append(nn.LeakyReLU(0.2))
+
+        self.style = nn.Sequential(*layers)
+
+    def forward(
+        self,
+        input,
+        noise=None,
+        step=0,
+        alpha=-1,
+        mean_style=None,
+        style_weight=0,
+        mixing_range=(-1, -1),
+    ):
+        styles = []
+        if type(input) not in (list, tuple):
+            input = [input]
+
+        for i in input:
+            styles.append(self.style(i))
+
+        batch = input[0].shape[0]
+
+        if noise is None:
+            noise = []
+
+            for i in range(step + 1):
+                size = 4 * 2 ** i
+                noise.append(torch.randn(batch, 1, size, size, device=input[0].device))
+
+        if mean_style is not None:
+            styles_norm = []
+
+            for style in styles:
+                styles_norm.append(mean_style + style_weight * (style - mean_style))
+
+            styles = styles_norm
+
+        return self.generator(styles, noise, step, alpha, mixing_range=mixing_range)
+
+    def mean_style(self, input):
+        style = self.style(input).mean(0, keepdim=True)
+
+        return style
+
+
 
 class Discriminator(nn.Module):
     def __init__(self, fused=True):
