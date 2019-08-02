@@ -169,7 +169,7 @@ def train(args, dataset, generator, discriminator, step=None):
             real_image_gen = next(data_loader)
 
         real_image_gen = real_image_gen.cuda()
-        fake_image = generator(real_image_gen, step=step, alpha=alpha)
+        fake_image, _ = generator(real_image_gen, step=step, alpha=alpha)
         fake_predict = discriminator(fake_image, step=step, alpha=alpha)
 
         if args.loss == 'wgan-gp':
@@ -212,7 +212,7 @@ def train(args, dataset, generator, discriminator, step=None):
                 real_image_gen = next(data_loader)
 
             real_image_gen = real_image_gen.cuda()
-            fake_image = generator(real_image_gen, step=step, alpha=alpha)
+            fake_image, style = generator(real_image_gen, step=step, alpha=alpha)
 
             predict = discriminator(fake_image, step=step, alpha=alpha)
 
@@ -220,7 +220,9 @@ def train(args, dataset, generator, discriminator, step=None):
                 loss = -predict.mean()
 
             elif args.loss == 'r1':
-                loss = F.softplus(-predict).mean() + reconstruction_loss(fake_image, real_image_gen)
+                loss = args.lambda_1 * F.softplus(-predict).mean() + args.lambda_2 * reconstruction_loss(fake_image, real_image_gen)
+                if args.lambda_3 > 0.0:
+                    loss += args.lambda_3 * reconstruction_loss(generator.encoder(fake_image), style)
 
             gen_loss_val = loss.item()
 
@@ -286,6 +288,9 @@ if __name__ == '__main__':
     parser.add_argument('--loss', type=str, default='wgan-gp', choices=['wgan-gp', 'r1'], help='class of gan loss')
     parser.add_argument('--save_path', type=str, default='', help='path to saving dir.')
     parser.add_argument('--ckpt_path', type=str, default=None, help='path to pretrained model file.')
+    parser.add_argument('--lambda_1', type=float, default=1.0, help='Strength of adversarial loss for the generator.')
+    parser.add_argument('--lambda_2', type=float, default=1.0, help='Strength of content loss for generator.')
+    parser.add_argument('--lambda_3', type=float, default=1.0, help='Strength of style loss on w.')
     args = parser.parse_args()
 
     generator = nn.DataParallel(StyledGeneratorWithEncoder(code_size)).cuda()

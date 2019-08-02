@@ -505,11 +505,10 @@ class StyledGenerator(nn.Module):
 
         return style
 
-class StyledGeneratorWithEncoder(nn.Module):
-    def __init__(self, code_dim=512):
-        super().__init__()
 
-        self.generator = Generator(code_dim)
+class Encoder(nn.Module):
+    def __init__(self):
+        super().__init__()
 
         self.progression = nn.ModuleList(
             [
@@ -521,7 +520,7 @@ class StyledGeneratorWithEncoder(nn.Module):
                 ConvBlock(512, 512, 3, 1, downsample=True),  # 16
                 ConvBlock(512, 512, 3, 1, downsample=True),  # 8
                 ConvBlock(512, 512, 3, 1, downsample=True),  # 4
-                ConvBlock(513, 512, 3, 1, 4, 0),
+                ConvBlock(512, 512, 3, 1, 4, 0),
             ]
         )
 
@@ -541,21 +540,30 @@ class StyledGeneratorWithEncoder(nn.Module):
 
         self.n_layer = len(self.progression)
 
-    def forward(self, input, noise=None, step=0, alpha=-1, mixing_range=(-1, -1)):
+    def forward(self, input, step=0):
         for i in range(step, -1, -1):
             index = self.n_layer - i - 1
 
             if i == step:
                 out = self.from_rgb[index](input)
 
-            if i == 0:
-                out_std = torch.sqrt(out.var(0, unbiased=False) + 1e-8)
-                mean_std = out_std.mean()
-                mean_std = mean_std.expand(out.size(0), 1, 4, 4)
-                out = torch.cat([out, mean_std], 1)
-
             out = self.progression[index](out)
         style = out.squeeze(2).squeeze(2)
+
+        return style
+
+
+class StyledGeneratorWithEncoder(nn.Module):
+    def __init__(self, code_dim=512):
+        super().__init__()
+
+        self.generator = Generator(code_dim)
+
+        self.encoder = Encoder()
+
+    def forward(self, input, noise=None, step=0, alpha=-1, mixing_range=(-1, -1)):
+
+        style = self.encoder(input, step)
 
         batch = input.shape[0]
         if noise is None:
@@ -565,7 +573,7 @@ class StyledGeneratorWithEncoder(nn.Module):
                 size = 4 * 2 ** i
                 noise.append(torch.randn(batch, 1, size, size, device=input.device))
 
-        return self.generator([style], noise, step, alpha, mixing_range=mixing_range)
+        return self.generator([style], noise, step, alpha, mixing_range=mixing_range), style
 
 
 class Discriminator(nn.Module):
