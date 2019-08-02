@@ -506,59 +506,66 @@ class StyledGenerator(nn.Module):
         return style
 
 class StyledGeneratorWithEncoder(nn.Module):
-    def __init__(self, code_dim=512, n_mlp=8):
+    def __init__(self, code_dim=512):
         super().__init__()
 
         self.generator = Generator(code_dim)
 
-        layers = [PixelNorm()]
-        for i in range(n_mlp):
-            layers.append(EqualLinear(code_dim, code_dim))
-            layers.append(nn.LeakyReLU(0.2))
+        self.progression = nn.ModuleList(
+            [
+                ConvBlock(16, 32, 3, 1, downsample=True),  # 512
+                ConvBlock(32, 64, 3, 1, downsample=True),  # 256
+                ConvBlock(64, 128, 3, 1, downsample=True),  # 128
+                ConvBlock(128, 256, 3, 1, downsample=True),  # 64
+                ConvBlock(256, 512, 3, 1, downsample=True),  # 32
+                ConvBlock(512, 512, 3, 1, downsample=True),  # 16
+                ConvBlock(512, 512, 3, 1, downsample=True),  # 8
+                ConvBlock(512, 512, 3, 1, downsample=True),  # 4
+                ConvBlock(513, 512, 3, 1, 4, 0),
+            ]
+        )
 
-        self.style = nn.Sequential(*layers)
+        self.from_rgb = nn.ModuleList(
+            [
+                EqualConv2d(3, 16, 1),
+                EqualConv2d(3, 32, 1),
+                EqualConv2d(3, 64, 1),
+                EqualConv2d(3, 128, 1),
+                EqualConv2d(3, 256, 1),
+                EqualConv2d(3, 512, 1),
+                EqualConv2d(3, 512, 1),
+                EqualConv2d(3, 512, 1),
+                EqualConv2d(3, 512, 1),
+            ]
+        )
 
-    def forward(
-        self,
-        input,
-        noise=None,
-        step=0,
-        alpha=-1,
-        mean_style=None,
-        style_weight=0,
-        mixing_range=(-1, -1),
-    ):
-        styles = []
-        if type(input) not in (list, tuple):
-            input = [input]
+        self.n_layer = len(self.progression)
 
-        for i in input:
-            styles.append(self.style(i))
+    def forward(self, input, noise=None, step=0, alpha=-1, mixing_range=(-1, -1)):
+        for i in range(step, -1, -1):
+            index = self.n_layer - i - 1
 
-        batch = input[0].shape[0]
+            if i == step:
+                out = self.from_rgb[index](input)
 
+            if i == 0:
+                out_std = torch.sqrt(out.var(0, unbiased=False) + 1e-8)
+                mean_std = out_std.mean()
+                mean_std = mean_std.expand(out.size(0), 1, 4, 4)
+                out = torch.cat([out, mean_std], 1)
+
+            out = self.progression[index](out)
+        style = out.squeeze(2).squeeze(2)
+
+        batch = input.shape[0]
         if noise is None:
             noise = []
 
             for i in range(step + 1):
                 size = 4 * 2 ** i
-                noise.append(torch.randn(batch, 1, size, size, device=input[0].device))
+                noise.append(torch.randn(batch, 1, size, size, device=input.device))
 
-        if mean_style is not None:
-            styles_norm = []
-
-            for style in styles:
-                styles_norm.append(mean_style + style_weight * (style - mean_style))
-
-            styles = styles_norm
-
-        return self.generator(styles, noise, step, alpha, mixing_range=mixing_range)
-
-    def mean_style(self, input):
-        style = self.style(input).mean(0, keepdim=True)
-
-        return style
-
+        return self.generator([style], noise, step, alpha, mixing_range=mixing_range)
 
 
 class Discriminator(nn.Module):
