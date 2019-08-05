@@ -247,7 +247,7 @@ def train(args, dataset, generator, discriminator, step=None):
                 images.append(
                     g_running(
                         real_image_gen[:50], step=step, alpha=alpha
-                    ).data.cpu()
+                    )[0].data.cpu()
                 )
 
             utils.save_image(
@@ -290,7 +290,7 @@ if __name__ == '__main__':
     parser.add_argument('--ckpt_path', type=str, default=None, help='path to pretrained model file.')
     parser.add_argument('--lambda_1', type=float, default=1.0, help='Strength of adversarial loss for the generator.')
     parser.add_argument('--lambda_2', type=float, default=1.0, help='Strength of content loss for generator.')
-    parser.add_argument('--lambda_3', type=float, default=1.0, help='Strength of style loss on w.')
+    parser.add_argument('--lambda_3', type=float, default=0.0, help='Strength of style loss on w.')
     args = parser.parse_args()
 
     generator = nn.DataParallel(StyledGeneratorWithEncoder(code_size)).cuda()
@@ -301,8 +301,8 @@ if __name__ == '__main__':
     class_loss = nn.CrossEntropyLoss()
 
     g_optimizer = optim.Adam(generator.module.generator.parameters(), lr=args.lr, betas=(0.0, 0.99))
-    g_optimizer.add_param_group({'params': generator.module.progression.parameters(), 'lr': args.lr * 0.01,'mult': 0.01})
-    g_optimizer.add_param_group({'params': generator.module.from_rgb.parameters(), 'lr': args.lr * 0.01, 'mult': 0.01})
+    g_optimizer.add_param_group({'params': generator.module.encoder.progression.parameters(), 'lr': args.lr * 0.01,'mult': 0.01})
+    g_optimizer.add_param_group({'params': generator.module.encoder.from_rgb.parameters(), 'lr': args.lr * 0.01, 'mult': 0.01})
     d_optimizer = optim.Adam(discriminator.parameters(), lr=args.lr, betas=(0.0, 0.99))
 
     if args.ckpt_path is not None:
